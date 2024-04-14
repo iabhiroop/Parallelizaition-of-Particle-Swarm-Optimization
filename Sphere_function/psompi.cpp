@@ -1,33 +1,13 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <cstdlib>
-#include <ctime>
 #include <limits>
+#include <random>
+#include <chrono>
 #include <mpi.h>
 
-using namespace std;
-
-// Particle class
-class Particle {
-public:
-    vector<double> position;
-    vector<double> velocity;
-    vector<double> personalBestPos;
-    double fitness;
-    double personalBestFitness;
-
-    Particle(int dim) {
-        position.resize(dim);
-        velocity.resize(dim);
-        personalBestPos.resize(dim);
-        fitness = 0.0;
-        personalBestFitness = 0.0;
-    }
-};
-
-// Objective function (e.g., sphere function)
-double sphereFunction(const vector<double>& x) {
+// Define the sphere function
+double sphere_function(const std::vector<double>& x) {
     double sum = 0.0;
     for (double xi : x) {
         sum += xi * xi;
@@ -35,97 +15,125 @@ double sphereFunction(const vector<double>& x) {
     return sum;
 }
 
-// PSO function
-vector<double> pso(int dim, int numParticles, int maxIterations, MPI_Comm comm) {
-    int rank, size;
-    MPI_Comm_rank(comm, &rank);
-    MPI_Comm_size(comm, &size);
+// Generate random initial positions and velocities for particles
+void initialize_particles(std::vector<std::vector<double>>& positions,
+                          std::vector<std::vector<double>>& velocities,
+                          int num_particles, int num_dimensions) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(-5.0, 5.0); // Adjust bounds as needed
 
-    // Initialize particles
-    vector<Particle> swarm;
-    for (int i = 0; i < numParticles; ++i) {
-        Particle p(dim);
-        for (int j = 0; j < dim; ++j) {
-            p.position[j] = (rand() / (RAND_MAX + 1.0)) * 10 - 5; // Initialize position randomly between -5 and 5
-            p.velocity[j] = 0.0; // Initialize velocity to 0
+    for (int i = 0; i < num_particles; ++i) {
+        std::vector<double> position(num_dimensions);
+        std::vector<double> velocity(num_dimensions);
+        for (int j = 0; j < num_dimensions; ++j) {
+            position[j] = dis(gen);
+            velocity[j] = dis(gen);
         }
-        swarm.push_back(p);
+        positions.push_back(position);
+        velocities.push_back(velocity);
     }
-
-    // PSO iterations
-    vector<double> globalBestPos(dim, 0.0);
-    double globalBestFitness = numeric_limits<double>::max();
-    for (int iter = 0; iter < maxIterations; ++iter) {
-        // Evaluate fitness in parallel
-        #pragma omp parallel for
-        for (int i = 0; i < numParticles; ++i) {
-            swarm[i].fitness = sphereFunction(swarm[i].position);
-        }
-
-        // Update personal best and global best in parallel
-        #pragma omp parallel for
-        for (int i = 0; i < numParticles; ++i) {
-            if (swarm[i].fitness < swarm[i].personalBestFitness || iter == 0) {
-                swarm[i].personalBestPos = swarm[i].position;
-                swarm[i].personalBestFitness = swarm[i].fitness;
-            }
-            #pragma omp critical
-            {
-                if (swarm[i].fitness < globalBestFitness) {
-                    globalBestPos = swarm[i].position;
-                    globalBestFitness = swarm[i].fitness;
-                }
-            }
-        }
-
-        // Update velocities and positions in parallel
-        #pragma omp parallel for
-        for (int i = 0; i < numParticles; ++i) {
-            for (int j = 0; j < dim; ++j) {
-                double r1 = (rand() / (RAND_MAX + 1.0));
-                double r2 = (rand() / (RAND_MAX + 1.0));
-                swarm[i].velocity[j] = 0.5 * swarm[i].velocity[j] +
-                                        2.0 * r1 * (swarm[i].personalBestPos[j] - swarm[i].position[j]) +
-                                        2.0 * r2 * (globalBestPos[j] - swarm[i].position[j]);
-                swarm[i].position[j] += swarm[i].velocity[j];
-            }
-        }
-    }
-
-    return globalBestPos;
 }
 
-int main(int argc, char *argv[]) {
-    srand(time(nullptr)); // Seed random number generator
+// Evaluate objective function for particles
+void evaluate_objective_function(const std::vector<std::vector<double>>& positions,
+                                  std::vector<double>& objective_values) {
+    objective_values.clear();
+    for (const auto& position : positions) {
+        double value = sphere_function(position);
+        objective_values.push_back(value);
+    }
+}
 
+// Update particle velocities and positions
+void update_particles(std::vector<std::vector<double>>& positions,
+                      std::vector<std::vector<double>>& velocities,
+                      const std::vector<double>& global_best_position,
+                      double c1, double c2, double w) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0.0, 1.0);
+
+    for (size_t i = 0; i < positions.size(); ++i) {
+        // Update velocity
+        for (size_t j = 0; j < positions[i].size(); ++j) {
+            double r1 = dis(gen);
+            double r2 = dis(gen);
+            velocities[i][j] = w * velocities[i][j] + c1 * r1 * (global_best_position[j] - positions[i][j]) + c2 * r2 * (positions[i][j] - positions[i][j]);
+        }
+
+        // Update position
+        for (size_t j = 0; j < positions[i].size(); ++j) {
+            positions[i][j] += velocities[i][j];
+        }
+    }
+}
+
+int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
-    int dim = 50; // Dimension of the problem
-    int numParticles = 1000; // Number of particles in the swarm
-    int maxIterations = 1000; // Maximum number of iterations
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    MPI_Comm comm = MPI_COMM_WORLD;
-    int rank;
-    MPI_Comm_rank(comm, &rank);
+    // Define problem parameters
+    int num_particles = 1000;
+    int num_dimensions = 50;
+    int max_iterations = 1000;
+    double c1 = 2.0;
+    double c2 = 2.0;
+    double w = 0.5;
 
-    double startTime = MPI_Wtime(); // Start time measurement
+    // Initialize particles
+    std::vector<std::vector<double>> positions;
+    std::vector<std::vector<double>> velocities;
+    initialize_particles(positions, velocities, num_particles, num_dimensions);
 
-    vector<double> solution = pso(dim, numParticles, maxIterations, comm);
+    std::vector<double> objective_values;
 
-    double endTime = MPI_Wtime(); // End time measurement
+    // Start timing
+    auto start_time = std::chrono::high_resolution_clock::now();
 
-    if (rank == 0) {
-        cout << "Optimal solution found: ";
-        for (double val : solution) {
-            cout << val << " ";
+    // Main PSO loop
+    std::vector<double> global_best_position(num_dimensions, std::numeric_limits<double>::max());
+    double global_best_value = std::numeric_limits<double>::max();
+    for (int iteration = 0; iteration < max_iterations; ++iteration) {
+        // Evaluate objective function
+        evaluate_objective_function(positions, objective_values);
+
+        // Update particle velocities and positions
+        update_particles(positions, velocities, global_best_position, c1, c2, w);
+
+        // Find local best position and value
+        double local_best_value = std::numeric_limits<double>::max();
+        std::vector<double> local_best_position(num_dimensions);
+        for (int i = 0; i < num_particles; ++i) {
+            if (objective_values[i] < local_best_value) {
+                local_best_value = objective_values[i];
+                local_best_position = positions[i];
+            }
         }
-        cout << endl;
 
-        cout << "Time taken: " << endTime - startTime << " seconds" << endl;
+        // Reduce to find global best position and value
+        MPI_Allreduce(&local_best_value, &global_best_value, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+        MPI_Allreduce(local_best_position.data(), global_best_position.data(), num_dimensions, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    }
+
+    // Stop timing
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end_time - start_time;
+
+    // Print final result
+    if (rank == 0) {
+        std::cout << "Global Best Value: " << global_best_value << std::endl;
+        std::cout << "Global Best Position:";
+        for (double val : global_best_position) {
+            std::cout << " " << val;
+        }
+        std::cout << std::endl;
+        std::cout << "Time taken: " << duration.count() << " seconds" << std::endl;
     }
 
     MPI_Finalize();
-
     return 0;
 }
-
