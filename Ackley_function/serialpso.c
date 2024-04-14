@@ -27,10 +27,10 @@ double ackley(double x[], double nDimensions) {
 void calculate(double nParticles, double result[]);
 
 int main(int argc, char *argv[]) {
-    double nParticles = 500; // Default number of particles
-    double nDimensions = 2; // Default number of dimensions
+    double nParticles = 1000; // Default number of particles
+    double nDimensions = 50; // Default number of dimensions
     double mVelocity = 60; // Default maximum velocity
-    double nIterations = 1; // Default number of iterations
+    double nIterations = 100; // Default number of iterations
     double seed = 1; // Default seed value
 
     // Argument handling
