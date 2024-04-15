@@ -36,21 +36,6 @@ int main(int argc, char *argv[]) {
     double a, b;
     double c1, c2, rho1, rho2, w, fit;
 
-    // Argument handling
-    for (i = 1; i < argc - 1; i++) {
-        if (strcmp(argv[i], "-D") == 0)
-            nDimensions = strtol(argv[i + 1], NULL, 10);
-        else if (strcmp(argv[i], "-m") == 0)
-            nParticles = strtol(argv[i + 1], NULL, 10);
-        else if (strcmp(argv[i], "-V") == 0)
-            mVelocity = strtol(argv[i + 1], NULL, 10);
-        else if (strcmp(argv[i], "-i") == 0)
-            nIterations = strtol(argv[i + 1], NULL, 10);
-        else if (strcmp(argv[i], "-s") == 0)
-            seed = strtol(argv[i + 1], NULL, 10);
-    }
-
-    // Default values
     if (nDimensions == 0) nDimensions = 50;
     if (nParticles == 0) nParticles = 1000;
     if (mVelocity == 0) mVelocity = 60;
