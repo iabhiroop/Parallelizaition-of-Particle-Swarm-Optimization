@@ -33,20 +33,6 @@ int main(int argc, char *argv[]) {
     double nIterations = 100; // Default number of iterations
     double seed = 1; // Default seed value
 
-    // Argument handling
-    for (int i = 1; i < argc - 1; i++) {
-        if (strcmp(argv[i], "-D") == 0)
-            nDimensions = strtol(argv[i + 1], NULL, 10);
-        else if (strcmp(argv[i], "-m") == 0)
-            nParticles = strtol(argv[i + 1], NULL, 10);
-        else if (strcmp(argv[i], "-V") == 0)
-            mVelocity = strtol(argv[i + 1], NULL, 10);
-        else if (strcmp(argv[i], "-i") == 0)
-            nIterations = strtol(argv[i + 1], NULL, 10);
-        else if (strcmp(argv[i], "-s") == 0)
-            seed = strtol(argv[i + 1], NULL, 10);
-    }
-
     struct timeval TimeValue_Start, TimeValue_Final;
     double time_overhead;
 
